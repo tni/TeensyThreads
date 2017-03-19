@@ -3,7 +3,7 @@
   Created by Fernando Trias, January 2017.
   Copyright 2017 by Fernando Trias. All rights reserved.
 */
-#include "Threads.h"
+#include "TeensyThreads.h"
 #include <Arduino.h>
 
 Threads threads;
@@ -21,7 +21,14 @@ extern "C" {
   void loadNextThread() {
     threads.getNextThread();
   }
+  // interrupt flag register for the PIT timer that's being used for
+  // context switches
+  uint32_t ctx_switch_isr_flag_reg;
+
+  void context_switch_pit_isr();
 }
+
+static void dummy_fn() {}
 
 Threads::Threads() : thread_active(FIRST_RUN), current_thread(0), thread_count(0), thread_error(0) {
   // initialize context_switch() globals from thread 0, which is MSP and always running
@@ -33,6 +40,15 @@ Threads::Threads() : thread_active(FIRST_RUN), current_thread(0), thread_count(0
   currentActive = thread_active;
   thread[0].flags = RUNNING;
   thread[0].ticks = DEFAULT_TICKS;
+
+  // The timer interrupt will have the lowest priority. This is necessary, so
+  // that other interrupts are not interrupted (which can lead to crashes).
+  ctx_switch_timer.priority(255);
+  ctx_switch_timer.begin(dummy_fn, DEFAULT_TICKLEN);
+  IRQ_NUMBER_t timer_irq = ctx_switch_timer;
+  int timer_nr = timer_irq - IRQ_PIT_CH0;
+  ctx_switch_isr_flag_reg = uint32_t(&PIT_TFLG0) + 16 * timer_nr;
+  attachInterruptVector(timer_irq, context_switch_pit_isr);
 }
 
 /*
@@ -84,25 +100,6 @@ void Threads::getNextThread() {
   currentSP = thread[current_thread].sp;
   currentCount = thread[current_thread].ticks;
   currentActive = thread_active;
-}
-
-/* 
- * Replace the SysTick interrupt for our context switching. Note that
- * this function is "naked" meaning it does not save it's registers
- * on the stack. This is so we can preserve the stack of the caller.
- *
- * Interrupts will save r0-r4 in the stack and since this function 
- * is short and simple, it should only use those registers.
- */
-extern volatile uint32_t systick_millis_count;
-void __attribute((naked)) systick_isr(void)
-{
-  systick_millis_count++;
-  if (threads.thread_active == Threads::STARTED) { // switch only if active
-    // we branch in order to preserve LR and the stack
-    __asm volatile("b context_switch");
-  }
-  __asm volatile("bx lr");
 }
 
 void __attribute((naked)) svcall_isr(void)

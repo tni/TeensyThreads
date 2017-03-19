@@ -52,6 +52,7 @@
 #define _THREADS_H
 
 #include <stdint.h>
+#include <IntervalTimer.h>
 
 extern "C" {
   void context_switch(void);
@@ -165,6 +166,8 @@ public:
   static const int MAX_THREADS = 8;
   int DEFAULT_STACK_SIZE = 1024;
   int DEFAULT_TICKS = 100;
+  // context switch timer tick length in microseconds
+  static const int DEFAULT_TICKLEN = 100;
 
   // State of threading system
   static const int STARTED = 1;
@@ -193,6 +196,7 @@ protected:
    * But in the future, a linked list might be more appropriate.
    */
   ThreadInfo thread[MAX_THREADS];
+  IntervalTimer ctx_switch_timer;
 
 public:
   Threads();

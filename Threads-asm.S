@@ -41,25 +41,23 @@
   .thumb
 
   .global context_switch_direct
+  .thumb_func
 context_switch_direct:
   CPSID I
   B call_direct
 
-  .global context_switch
-context_switch:
+  .global context_switch_pit_isr
+  .thumb_func
+context_switch_pit_isr:
+  // Write 1 to PIT ISR flag register to clear interrupt
+  MOVS r0, #1
+  LDR r1, =ctx_switch_isr_flag_reg
+  LDR r1, [r1]
+  STR r0, [r1]
 
   // Disable all interrupts; if we get interrupted during a context switch this
   // could corrupt the system.
   CPSID I
-
-  // Did we interrupt another interrupt? If so, don't switch. Switching would
-  // wreck the system. In theory, we could reschedule the switch until the
-  // other interrupt is done. Or we could do a more sophisticated switch, but the
-  // easiest thing is to just ignore this condition.
-  CMP lr, #0xFFFFFFF1      // this means we interrupted an interrupt
-  BEQ to_exit              // so don't do anything until next time
-  CMP lr, #0xFFFFFFE1      // this means we interrupted an interrupt with FPU
-  BEQ to_exit              // so don't do anything until next time
 
   // Count down number of ticks we should stay in thread
   LDR r0, =currentCount    // get the tick count (address to variable)
